@@ -1,0 +1,50 @@
+name: Build Spes Kernel with KSUNext
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+        with:
+          ref: main-a16-sm8250-base-ksun-new
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses-dev libelf-dev zip clang lld llvm
+
+      - name: Fetch Toolchain
+        run: |
+          git clone --depth=1 https://gitlab.com/EvaGCC/eva-gcc.git -b aarch64-elf gcc64 || true
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+
+      - name: Compile Kernel
+        run: |
+          mkdir -p out
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export PATH="$(pwd)/clang/bin:$PATH"
+          
+          make O=out spes_defconfig
+          make -j$(nproc) O=out \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            LLVM=1 \
+            LLVM_IAS=1
+
+      - name: Package with AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AK3
+          cp out/arch/arm64/boot/Image.lz4-dtb AK3/ 2>/dev/null || cp out/arch/arm64/boot/Image AK3/
+          cd AK3
+          zip -r9 ../Spes-Kernel-KSUNext.zip *
+
+      - name: Upload Kernel Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Spes-Kernel-KSUNext
+          path: Spes-Kernel-KSUNext.zip
